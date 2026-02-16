@@ -3,19 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Control de Canastillas - Sistema de Gestión</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Control de Canastillas - Cloud Edition</title>
+    <link rel="stylesheet" href="styles-cloud.css">
     <!-- Librería SheetJS para manejo de Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Google API para acceso a Sheets -->
+    <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
+    <!-- PANTALLA DE CONFIGURACIÓN INICIAL -->
+    <div id="setupScreen" class="screen active">
+        <div class="setup-container">
+            <div class="setup-header">
+                <h1>⚙️ Configuración Inicial</h1>
+                <p>Sistema de Control de Canastillas con Google Sheets</p>
+            </div>
+            
+            <div class="setup-content">
+                <div class="alert alert-info">
+                    <h3>📋 Pasos para Configurar</h3>
+                    <ol>
+                        <li>Ve a <a href="https://console.cloud.google.com" target="_blank">Google Cloud Console</a></li>
+                        <li>Crea un proyecto nuevo (ej: "control-canastillas")</li>
+                        <li>Habilita <strong>Google Sheets API</strong></li>
+                        <li>Crea credenciales → <strong>Clave de API</strong></li>
+                        <li>Crea credenciales → <strong>ID de cliente OAuth 2.0</strong></li>
+                        <li>En OAuth, agrega origen autorizado: <code>http://localhost</code> o tu dominio</li>
+                        <li>Crea una hoja de Google Sheets y obtén su ID</li>
+                    </ol>
+                </div>
+
+                <form id="setupForm" class="setup-form">
+                    <div class="form-group">
+                        <label for="apiKey">🔑 API Key *</label>
+                        <input type="text" id="apiKey" placeholder="AIzaSy..." required>
+                        <small>Tu clave de API de Google Cloud Console</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="clientId">👤 Client ID (OAuth) *</label>
+                        <input type="text" id="clientId" placeholder="123456789-abc.apps.googleusercontent.com" required>
+                        <small>Tu ID de cliente OAuth 2.0</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="spreadsheetId">📊 ID de Google Sheet *</label>
+                        <input type="text" id="spreadsheetId" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms" required>
+                        <small>El ID está en la URL de tu hoja: docs.google.com/spreadsheets/d/<strong>[ID_AQUI]</strong>/edit</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-large">
+                        💾 Guardar Configuración e Iniciar
+                    </button>
+                </form>
+
+                <div class="setup-help">
+                    <h4>❓ Ayuda Rápida</h4>
+                    <details>
+                        <summary>¿Cómo crear la Google Sheet?</summary>
+                        <p>1. Ve a <a href="https://sheets.google.com" target="_blank">Google Sheets</a></p>
+                        <p>2. Crea una hoja nueva llamada "Control Canastillas"</p>
+                        <p>3. En la primera fila pon: Fecha | Hora | Proveedor | Supermercado | Cantidad | ID_Entrega | ID_Recepcion</p>
+                        <p>4. Comparte la hoja con "Cualquier persona con el enlace" puede editar</p>
+                        <p>5. Copia el ID de la URL</p>
+                    </details>
+                    
+                    <details>
+                        <summary>¿Qué permisos necesito?</summary>
+                        <p>La API Key necesita tener habilitada <strong>Google Sheets API</strong></p>
+                        <p>El OAuth necesita el scope: <code>https://www.googleapis.com/auth/spreadsheets</code></p>
+                    </details>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- PANTALLA DE LOGIN -->
-    <div id="loginScreen" class="screen active">
+    <div id="loginScreen" class="screen">
         <div class="login-container">
             <div class="login-header">
                 <h1>🛒 Control de Canastillas</h1>
-                <p>Sistema de Gestión de Entregas</p>
+                <p>Sistema de Gestión de Entregas - Cloud Edition</p>
             </div>
+            
+            <div class="cloud-status">
+                <span class="status-indicator" id="cloudStatus">
+                    <span class="dot"></span> Conectado a Google Sheets
+                </span>
+            </div>
+
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Usuario</label>
@@ -28,12 +104,17 @@
                 <button type="submit" class="btn btn-primary">Iniciar Sesión</button>
                 <div id="loginError" class="error-message"></div>
             </form>
+            
             <div class="login-info">
                 <p><strong>Usuarios de prueba:</strong></p>
                 <p>Super: super / admin123</p>
                 <p>Admin: admin / admin123</p>
                 <p>Operador: operador / operador123</p>
             </div>
+
+            <button id="reconfigBtn" class="btn btn-secondary btn-small">
+                ⚙️ Reconfigurar Conexión
+            </button>
         </div>
     </div>
 
@@ -42,17 +123,22 @@
         <!-- HEADER -->
         <header class="main-header">
             <div class="header-content">
-                <h1>🛒 Control de Canastillas</h1>
-                <div class="user-info">
-                    <span id="userRole"></span>
-                    <button id="logoutBtn" class="btn btn-secondary">Cerrar Sesión</button>
+                <h1>🛒 Control de Canastillas - Cloud</h1>
+                <div class="header-right">
+                    <span class="sync-status" id="syncStatus">
+                        <span class="sync-icon">🔄</span> Sincronizado
+                    </span>
+                    <div class="user-info">
+                        <span id="userRole"></span>
+                        <button id="logoutBtn" class="btn btn-secondary">Cerrar Sesión</button>
+                    </div>
                 </div>
             </div>
         </header>
 
         <!-- CONTENIDO PRINCIPAL -->
         <main class="main-content">
-            <!-- SECCIÓN DE REGISTRO (para operador, admin y super) -->
+            <!-- SECCIÓN DE REGISTRO -->
             <section id="registerSection" class="section">
                 <h2>📝 Registrar Nueva Entrega</h2>
                 <form id="deliveryForm" class="delivery-form">
@@ -92,8 +178,8 @@
                     </div>
 
                     <div class="form-actions">
-                        <button type="submit" class="btn btn-primary btn-large">
-                            ✅ Guardar Registro
+                        <button type="submit" class="btn btn-primary btn-large" id="saveBtn">
+                            ☁️ Guardar en Google Sheets
                         </button>
                         <button type="button" id="clearFormBtn" class="btn btn-secondary">
                             🔄 Limpiar Formulario
@@ -103,11 +189,14 @@
                 <div id="formSuccess" class="success-message"></div>
             </section>
 
-            <!-- SECCIÓN DE REGISTROS (solo para admin y super) -->
+            <!-- SECCIÓN DE REGISTROS -->
             <section id="recordsSection" class="section" style="display: none;">
                 <div class="section-header">
-                    <h2>📊 Registros de Entregas</h2>
+                    <h2>📊 Registros de Entregas (Tiempo Real)</h2>
                     <div class="section-actions">
+                        <button id="refreshBtn" class="btn btn-info">
+                            🔄 Actualizar
+                        </button>
                         <button id="downloadExcelBtn" class="btn btn-success">
                             📥 Descargar Excel
                         </button>
@@ -134,7 +223,6 @@
                             </tr>
                         </thead>
                         <tbody id="recordsBody">
-                            <!-- Los registros se cargarán aquí dinámicamente -->
                         </tbody>
                     </table>
                 </div>
@@ -146,7 +234,7 @@
 
         <!-- FOOTER -->
         <footer class="main-footer">
-            <p>&copy; 2024 Sistema de Control de Canastillas | Desarrollado para gestión de supermercados</p>
+            <p>&copy; 2024 Sistema de Control de Canastillas - Cloud Edition | Powered by Google Sheets</p>
         </footer>
     </div>
 
@@ -158,6 +246,12 @@
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- LOADING OVERLAY -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-spinner"></div>
+        <p>Conectando con Google Sheets...</p>
+    </div>
+
+    <script src="app-cloud.js"></script>
 </body>
 </html>
