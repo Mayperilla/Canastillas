@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control de Canastillas - Sistema de Gestión</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Librería SheetJS para manejo de Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+    <!-- PANTALLA DE LOGIN -->
+    <div id="loginScreen" class="screen active">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>🛒 Control de Canastillas</h1>
+                <p>Sistema de Gestión de Entregas</p>
+            </div>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="username">Usuario</label>
+                    <input type="text" id="username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="password">Contraseña</label>
+                    <input type="password" id="password" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn btn-primary">Iniciar Sesión</button>
+                <div id="loginError" class="error-message"></div>
+            </form>
+            <div class="login-info">
+                <p><strong>Usuarios de prueba:</strong></p>
+                <p>Super: super / admin123</p>
+                <p>Admin: admin / admin123</p>
+                <p>Operador: operador / operador123</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- PANTALLA PRINCIPAL -->
+    <div id="mainScreen" class="screen">
+        <!-- HEADER -->
+        <header class="main-header">
+            <div class="header-content">
+                <h1>🛒 Control de Canastillas</h1>
+                <div class="user-info">
+                    <span id="userRole"></span>
+                    <button id="logoutBtn" class="btn btn-secondary">Cerrar Sesión</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- CONTENIDO PRINCIPAL -->
+        <main class="main-content">
+            <!-- SECCIÓN DE REGISTRO (para operador, admin y super) -->
+            <section id="registerSection" class="section">
+                <h2>📝 Registrar Nueva Entrega</h2>
+                <form id="deliveryForm" class="delivery-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="proveedor">Proveedor *</label>
+                            <input type="text" id="proveedor" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="supermercado">Supermercado *</label>
+                            <input type="text" id="supermercado" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="cantidad">Cantidad de Canastillas *</label>
+                            <input type="number" id="cantidad" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Fecha y Hora (Automática)</label>
+                            <input type="text" id="fechaHora" disabled>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="idEntrega">Foto ID - Quien Entrega *</label>
+                            <input type="file" id="idEntrega" accept="image/*" required>
+                            <div id="previewEntrega" class="image-preview"></div>
+                        </div>
+                        <div class="form-group">
+                            <label for="idRecepcion">Foto ID - Quien Recibe *</label>
+                            <input type="file" id="idRecepcion" accept="image/*" required>
+                            <div id="previewRecepcion" class="image-preview"></div>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary btn-large">
+                            ✅ Guardar Registro
+                        </button>
+                        <button type="button" id="clearFormBtn" class="btn btn-secondary">
+                            🔄 Limpiar Formulario
+                        </button>
+                    </div>
+                </form>
+                <div id="formSuccess" class="success-message"></div>
+            </section>
+
+            <!-- SECCIÓN DE REGISTROS (solo para admin y super) -->
+            <section id="recordsSection" class="section" style="display: none;">
+                <div class="section-header">
+                    <h2>📊 Registros de Entregas</h2>
+                    <div class="section-actions">
+                        <button id="downloadExcelBtn" class="btn btn-success">
+                            📥 Descargar Excel
+                        </button>
+                    </div>
+                </div>
+
+                <div class="filters">
+                    <input type="text" id="searchInput" placeholder="Buscar por proveedor o supermercado...">
+                    <button id="searchBtn" class="btn btn-secondary">🔍 Buscar</button>
+                    <button id="clearSearchBtn" class="btn btn-secondary">✖️ Limpiar</button>
+                </div>
+
+                <div class="table-container">
+                    <table id="recordsTable">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Hora</th>
+                                <th>Proveedor</th>
+                                <th>Supermercado</th>
+                                <th>Cantidad</th>
+                                <th>ID Entrega</th>
+                                <th>ID Recepción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="recordsBody">
+                            <!-- Los registros se cargarán aquí dinámicamente -->
+                        </tbody>
+                    </table>
+                </div>
+                <div id="noRecords" class="no-records">
+                    No hay registros disponibles
+                </div>
+            </section>
+        </main>
+
+        <!-- FOOTER -->
+        <footer class="main-footer">
+            <p>&copy; 2024 Sistema de Control de Canastillas | Desarrollado para gestión de supermercados</p>
+        </footer>
+    </div>
+
+    <!-- MODAL PARA VER IMÁGENES -->
+    <div id="imageModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <img id="modalImage" src="" alt="Imagen ID">
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
