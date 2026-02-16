@@ -1,8 +1,21 @@
 // ============================================
-// CONFIGURACIÓN Y VARIABLES GLOBALES
+// CONFIGURACIÓN GOOGLE SHEETS API
 // ============================================
 
-// Definición de usuarios y roles
+let API_KEY = '';
+let CLIENT_ID = '';
+let SPREADSHEET_ID = '';
+const DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
+
+let tokenClient;
+let gapiInited = false;
+let gisInited = false;
+
+// ============================================
+// USUARIOS Y ROLES
+// ============================================
+
 const USERS = {
     super: {
         password: 'admin123',
@@ -33,34 +46,42 @@ const USERS = {
     }
 };
 
-// Usuario actual en sesión
 let currentUser = null;
-
-// Almacenamiento de registros en memoria (simula base de datos)
 let deliveryRecords = [];
-
-// Variables para las vistas previas de imágenes
 let idEntregaBase64 = null;
 let idRecepcionBase64 = null;
 
 // ============================================
-// INICIALIZACIÓN DE LA APLICACIÓN
+// INICIALIZACIÓN
 // ============================================
 
 document.addEventListener('DOMContentLoaded', function() {
-    initializeApp();
-});
-
-function initializeApp() {
-    // Cargar registros del localStorage si existen
-    loadRecordsFromStorage();
-    
-    // Configurar event listeners
+    checkConfiguration();
     setupEventListeners();
-    
-    // Actualizar fecha y hora cada segundo
     updateDateTime();
     setInterval(updateDateTime, 1000);
+});
+
+function checkConfiguration() {
+    const config = localStorage.getItem('googleSheetsConfig');
+    
+    if (config) {
+        const parsed = JSON.parse(config);
+        API_KEY = parsed.apiKey;
+        CLIENT_ID = parsed.clientId;
+        SPREADSHEET_ID = parsed.spreadsheetId;
+        
+        // Mostrar pantalla de login
+        document.getElementById('setupScreen').classList.remove('active');
+        document.getElementById('loginScreen').classList.add('active');
+        
+        // Inicializar Google API
+        gapiLoaded();
+        gisLoaded();
+    } else {
+        // Mostrar pantalla de configuración
+        document.getElementById('setupScreen').classList.add('active');
+    }
 }
 
 // ============================================
@@ -68,17 +89,27 @@ function initializeApp() {
 // ============================================
 
 function setupEventListeners() {
+    // Configuración
+    document.getElementById('setupForm').addEventListener('submit', handleSetup);
+    
+    // Reconfigurar
+    const reconfigBtn = document.getElementById('reconfigBtn');
+    if (reconfigBtn) {
+        reconfigBtn.addEventListener('click', function() {
+            localStorage.removeItem('googleSheetsConfig');
+            location.reload();
+        });
+    }
+    
     // Login
     document.getElementById('loginForm').addEventListener('submit', handleLogin);
-    
-    // Logout
     document.getElementById('logoutBtn').addEventListener('click', handleLogout);
     
-    // Formulario de registro
+    // Formulario
     document.getElementById('deliveryForm').addEventListener('submit', handleDeliverySubmit);
     document.getElementById('clearFormBtn').addEventListener('click', clearForm);
     
-    // Manejo de archivos de imagen
+    // Imágenes
     document.getElementById('idEntrega').addEventListener('change', function(e) {
         handleImageUpload(e, 'previewEntrega', 'idEntrega');
     });
@@ -87,30 +118,96 @@ function setupEventListeners() {
         handleImageUpload(e, 'previewRecepcion', 'idRecepcion');
     });
     
-    // Descargar Excel
-    document.getElementById('downloadExcelBtn').addEventListener('click', downloadExcel);
+    // Botones de acciones
+    const downloadBtn = document.getElementById('downloadExcelBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const searchBtn = document.getElementById('searchBtn');
+    const clearSearchBtn = document.getElementById('clearSearchBtn');
     
-    // Búsqueda
-    document.getElementById('searchBtn').addEventListener('click', filterRecords);
-    document.getElementById('clearSearchBtn').addEventListener('click', function() {
-        document.getElementById('searchInput').value = '';
-        displayRecords(deliveryRecords);
-    });
+    if (downloadBtn) downloadBtn.addEventListener('click', downloadExcel);
+    if (refreshBtn) refreshBtn.addEventListener('click', loadRecordsFromSheet);
+    if (searchBtn) searchBtn.addEventListener('click', filterRecords);
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', function() {
+            document.getElementById('searchInput').value = '';
+            displayRecords(deliveryRecords);
+        });
+    }
     
-    // Enter en búsqueda
-    document.getElementById('searchInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            filterRecords();
-        }
-    });
-    
-    // Modal de imágenes
+    // Modal
     document.querySelector('.close').addEventListener('click', closeModal);
     document.getElementById('imageModal').addEventListener('click', function(e) {
-        if (e.target === this) {
-            closeModal();
-        }
+        if (e.target === this) closeModal();
     });
+}
+
+// ============================================
+// CONFIGURACIÓN INICIAL
+// ============================================
+
+function handleSetup(e) {
+    e.preventDefault();
+    
+    const apiKey = document.getElementById('apiKey').value.trim();
+    const clientId = document.getElementById('clientId').value.trim();
+    const spreadsheetId = document.getElementById('spreadsheetId').value.trim();
+    
+    const config = {
+        apiKey: apiKey,
+        clientId: clientId,
+        spreadsheetId: spreadsheetId
+    };
+    
+    localStorage.setItem('googleSheetsConfig', JSON.stringify(config));
+    
+    alert('✅ Configuración guardada. Recargando...');
+    location.reload();
+}
+
+// ============================================
+// GOOGLE API INITIALIZATION
+// ============================================
+
+function gapiLoaded() {
+    gapi.load('client', initializeGapiClient);
+}
+
+async function initializeGapiClient() {
+    try {
+        await gapi.client.init({
+            apiKey: API_KEY,
+            discoveryDocs: [DISCOVERY_DOC],
+        });
+        gapiInited = true;
+        console.log('✅ GAPI inicializado');
+    } catch (error) {
+        console.error('Error inicializando GAPI:', error);
+    }
+}
+
+function gisLoaded() {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: '', // Se define en requestSignIn
+    });
+    gisInited = true;
+    console.log('✅ GIS inicializado');
+}
+
+function requestSignIn(callback) {
+    tokenClient.callback = async (resp) => {
+        if (resp.error !== undefined) {
+            throw (resp);
+        }
+        if (callback) callback();
+    };
+
+    if (gapi.client.getToken() === null) {
+        tokenClient.requestAccessToken({prompt: 'consent'});
+    } else {
+        tokenClient.requestAccessToken({prompt: ''});
+    }
 }
 
 // ============================================
@@ -124,7 +221,6 @@ function handleLogin(e) {
     const password = document.getElementById('password').value;
     const errorDiv = document.getElementById('loginError');
     
-    // Validar credenciales
     if (USERS[username] && USERS[username].password === password) {
         currentUser = {
             username: username,
@@ -132,55 +228,53 @@ function handleLogin(e) {
             permissions: USERS[username].permissions
         };
         
-        // Guardar sesión
         sessionStorage.setItem('currentUser', JSON.stringify(currentUser));
         
-        // Mostrar pantalla principal
-        showMainScreen();
+        // Autorizar Google Sheets
+        requestSignIn(() => {
+            showMainScreen();
+            if (currentUser.permissions.canViewRecords) {
+                loadRecordsFromSheet();
+            }
+        });
     } else {
         errorDiv.textContent = '❌ Usuario o contraseña incorrectos';
         errorDiv.classList.add('show');
-        
-        setTimeout(() => {
-            errorDiv.classList.remove('show');
-        }, 3000);
+        setTimeout(() => errorDiv.classList.remove('show'), 3000);
     }
 }
 
 function handleLogout() {
+    const token = gapi.client.getToken();
+    if (token !== null) {
+        google.accounts.oauth2.revoke(token.access_token);
+        gapi.client.setToken('');
+    }
+    
     currentUser = null;
     sessionStorage.removeItem('currentUser');
-    
-    // Limpiar formulario
     clearForm();
     
-    // Volver a login
     document.getElementById('loginScreen').classList.add('active');
     document.getElementById('mainScreen').classList.remove('active');
-    
-    // Limpiar campos de login
     document.getElementById('loginForm').reset();
 }
 
 function showMainScreen() {
-    // Ocultar login y mostrar pantalla principal
     document.getElementById('loginScreen').classList.remove('active');
     document.getElementById('mainScreen').classList.add('active');
     
-    // Actualizar información del usuario
     document.getElementById('userRole').textContent = `👤 ${currentUser.role}: ${currentUser.username}`;
     
-    // Mostrar u ocultar secciones según permisos
     if (currentUser.permissions.canViewRecords) {
         document.getElementById('recordsSection').style.display = 'block';
-        displayRecords(deliveryRecords);
     } else {
         document.getElementById('recordsSection').style.display = 'none';
     }
 }
 
 // ============================================
-// MANEJO DE FECHA Y HORA
+// FECHA Y HORA
 // ============================================
 
 function updateDateTime() {
@@ -199,7 +293,6 @@ function formatDateTime(date) {
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
     const seconds = String(date.getSeconds()).padStart(2, '0');
-    
     return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
 }
 
@@ -228,158 +321,199 @@ function handleImageUpload(event, previewId, inputType) {
     const previewDiv = document.getElementById(previewId);
     
     if (file) {
-        // Validar que sea una imagen
         if (!file.type.startsWith('image/')) {
             alert('Por favor selecciona un archivo de imagen válido');
             event.target.value = '';
             return;
         }
         
-        // Crear FileReader para convertir a base64
         const reader = new FileReader();
-        
         reader.onload = function(e) {
+            // Para Google Sheets, truncamos el base64 para no exceder límites
             const base64String = e.target.result;
+            const truncatedBase64 = base64String.substring(0, 50000); // Límite de caracteres
             
-            // Guardar en variable global según el tipo
             if (inputType === 'idEntrega') {
-                idEntregaBase64 = base64String;
+                idEntregaBase64 = truncatedBase64;
             } else {
-                idRecepcionBase64 = base64String;
+                idRecepcionBase64 = truncatedBase64;
             }
             
-            // Mostrar vista previa
             previewDiv.innerHTML = `<img src="${base64String}" alt="Vista previa">`;
             previewDiv.classList.remove('empty');
         };
-        
         reader.readAsDataURL(file);
     }
 }
 
 // ============================================
-// MANEJO DEL FORMULARIO DE ENTREGA
+// GOOGLE SHEETS - GUARDAR
 // ============================================
 
-function handleDeliverySubmit(e) {
+async function handleDeliverySubmit(e) {
     e.preventDefault();
     
-    // Obtener valores del formulario
     const proveedor = document.getElementById('proveedor').value.trim();
     const supermercado = document.getElementById('supermercado').value.trim();
     const cantidad = parseInt(document.getElementById('cantidad').value);
     
-    // Validar que las imágenes estén cargadas
     if (!idEntregaBase64 || !idRecepcionBase64) {
         showError('Por favor carga ambas fotos de identificación');
         return;
     }
     
-    // Crear registro
-    const record = {
-        id: Date.now(), // ID único basado en timestamp
-        fecha: getCurrentDate(),
-        hora: getCurrentTime(),
-        proveedor: proveedor,
-        supermercado: supermercado,
-        cantidad: cantidad,
-        idEntregaBase64: idEntregaBase64,
-        idRecepcionBase64: idRecepcionBase64,
-        registradoPor: currentUser.username,
-        timestamp: new Date().toISOString()
-    };
+    showLoading('Guardando en Google Sheets...');
     
-    // Agregar al array de registros
-    deliveryRecords.push(record);
+    try {
+        const values = [[
+            getCurrentDate(),
+            getCurrentTime(),
+            proveedor,
+            supermercado,
+            cantidad,
+            idEntregaBase64,
+            idRecepcionBase64
+        ]];
+        
+        const response = await gapi.client.sheets.spreadsheets.values.append({
+            spreadsheetId: SPREADSHEET_ID,
+            range: 'Sheet1!A:G',
+            valueInputOption: 'USER_ENTERED',
+            resource: { values }
+        });
+        
+        hideLoading();
+        showSuccess('✅ Registro guardado en Google Sheets exitosamente');
+        updateSyncStatus('synced');
+        
+        setTimeout(() => {
+            clearForm();
+            if (currentUser.permissions.canViewRecords) {
+                loadRecordsFromSheet();
+            }
+        }, 1500);
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error guardando en Google Sheets:', error);
+        showError('❌ Error al guardar en Google Sheets: ' + error.message);
+        updateSyncStatus('error');
+    }
+}
+
+// ============================================
+// GOOGLE SHEETS - LEER
+// ============================================
+
+async function loadRecordsFromSheet() {
+    showLoading('Cargando registros...');
+    updateSyncStatus('syncing');
     
-    // Guardar en localStorage
-    saveRecordsToStorage();
-    
-    // Mostrar mensaje de éxito
-    showSuccess('✅ Registro guardado exitosamente');
-    
-    // Limpiar formulario
-    setTimeout(() => {
-        clearForm();
-    }, 1500);
-    
-    // Actualizar tabla si el usuario puede verla
-    if (currentUser.permissions.canViewRecords) {
+    try {
+        const response = await gapi.client.sheets.spreadsheets.values.get({
+            spreadsheetId: SPREADSHEET_ID,
+            range: 'Sheet1!A:G',
+        });
+        
+        const rows = response.result.values;
+        deliveryRecords = [];
+        
+        if (rows && rows.length > 1) {
+            // Saltar la primera fila (encabezados)
+            for (let i = 1; i < rows.length; i++) {
+                const row = rows[i];
+                deliveryRecords.push({
+                    id: i,
+                    fecha: row[0] || '',
+                    hora: row[1] || '',
+                    proveedor: row[2] || '',
+                    supermercado: row[3] || '',
+                    cantidad: row[4] || 0,
+                    idEntregaBase64: row[5] || '',
+                    idRecepcionBase64: row[6] || ''
+                });
+            }
+        }
+        
         displayRecords(deliveryRecords);
+        hideLoading();
+        updateSyncStatus('synced');
+        
+    } catch (error) {
+        hideLoading();
+        console.error('Error leyendo Google Sheets:', error);
+        showError('❌ Error al cargar registros: ' + error.message);
+        updateSyncStatus('error');
+    }
+}
+
+// ============================================
+// UI HELPERS
+// ============================================
+
+function showLoading(message) {
+    const overlay = document.getElementById('loadingOverlay');
+    const text = overlay.querySelector('p');
+    text.textContent = message;
+    overlay.classList.add('show');
+}
+
+function hideLoading() {
+    document.getElementById('loadingOverlay').classList.remove('show');
+}
+
+function updateSyncStatus(status) {
+    const syncStatus = document.getElementById('syncStatus');
+    if (!syncStatus) return;
+    
+    syncStatus.classList.remove('syncing', 'error');
+    
+    if (status === 'syncing') {
+        syncStatus.classList.add('syncing');
+        syncStatus.innerHTML = '<span class="sync-icon">🔄</span> Sincronizando...';
+    } else if (status === 'synced') {
+        syncStatus.innerHTML = '<span class="sync-icon">✅</span> Sincronizado';
+    } else if (status === 'error') {
+        syncStatus.classList.add('error');
+        syncStatus.innerHTML = '<span class="sync-icon">❌</span> Error de sincronización';
     }
 }
 
 function clearForm() {
     document.getElementById('deliveryForm').reset();
-    
-    // Limpiar vistas previas
     document.getElementById('previewEntrega').innerHTML = '';
     document.getElementById('previewEntrega').classList.add('empty');
     document.getElementById('previewRecepcion').innerHTML = '';
     document.getElementById('previewRecepcion').classList.add('empty');
-    
-    // Limpiar variables de imágenes
     idEntregaBase64 = null;
     idRecepcionBase64 = null;
-    
-    // Ocultar mensajes
     document.getElementById('formSuccess').classList.remove('show');
 }
 
 function showError(message) {
     const errorDiv = document.getElementById('loginError');
-    errorDiv.textContent = message;
-    errorDiv.classList.add('show');
-    
-    setTimeout(() => {
-        errorDiv.classList.remove('show');
-    }, 3000);
+    if (errorDiv) {
+        errorDiv.textContent = message;
+        errorDiv.classList.add('show');
+        setTimeout(() => errorDiv.classList.remove('show'), 5000);
+    }
 }
 
 function showSuccess(message) {
     const successDiv = document.getElementById('formSuccess');
     successDiv.textContent = message;
     successDiv.classList.add('show');
-    
-    setTimeout(() => {
-        successDiv.classList.remove('show');
-    }, 3000);
+    setTimeout(() => successDiv.classList.remove('show'), 3000);
 }
 
 // ============================================
-// ALMACENAMIENTO LOCAL
-// ============================================
-
-function saveRecordsToStorage() {
-    try {
-        localStorage.setItem('deliveryRecords', JSON.stringify(deliveryRecords));
-    } catch (e) {
-        console.error('Error al guardar en localStorage:', e);
-        alert('Error al guardar los datos. El almacenamiento local puede estar lleno.');
-    }
-}
-
-function loadRecordsFromStorage() {
-    try {
-        const stored = localStorage.getItem('deliveryRecords');
-        if (stored) {
-            deliveryRecords = JSON.parse(stored);
-        }
-    } catch (e) {
-        console.error('Error al cargar desde localStorage:', e);
-        deliveryRecords = [];
-    }
-}
-
-// ============================================
-// VISUALIZACIÓN DE REGISTROS
+// VISUALIZACIÓN
 // ============================================
 
 function displayRecords(records) {
     const tbody = document.getElementById('recordsBody');
     const noRecordsDiv = document.getElementById('noRecords');
     
-    // Limpiar tabla
     tbody.innerHTML = '';
     
     if (records.length === 0) {
@@ -389,11 +523,18 @@ function displayRecords(records) {
     
     noRecordsDiv.classList.remove('show');
     
-    // Mostrar registros en orden inverso (más recientes primero)
     const sortedRecords = [...records].reverse();
     
     sortedRecords.forEach(record => {
         const row = document.createElement('tr');
+        
+        const img1 = record.idEntregaBase64 ? 
+            `<img src="${record.idEntregaBase64}" class="image-thumb" alt="ID Entrega" onclick="showImageModal('${record.idEntregaBase64}')">` : 
+            'Sin imagen';
+            
+        const img2 = record.idRecepcionBase64 ? 
+            `<img src="${record.idRecepcionBase64}" class="image-thumb" alt="ID Recepción" onclick="showImageModal('${record.idRecepcionBase64}')">` : 
+            'Sin imagen';
         
         row.innerHTML = `
             <td>${record.fecha}</td>
@@ -401,18 +542,8 @@ function displayRecords(records) {
             <td>${record.proveedor}</td>
             <td>${record.supermercado}</td>
             <td>${record.cantidad}</td>
-            <td>
-                <img src="${record.idEntregaBase64}" 
-                     class="image-thumb" 
-                     alt="ID Entrega"
-                     onclick="showImageModal('${record.idEntregaBase64}')">
-            </td>
-            <td>
-                <img src="${record.idRecepcionBase64}" 
-                     class="image-thumb" 
-                     alt="ID Recepción"
-                     onclick="showImageModal('${record.idRecepcionBase64}')">
-            </td>
+            <td>${img1}</td>
+            <td>${img2}</td>
         `;
         
         tbody.appendChild(row);
@@ -436,24 +567,24 @@ function filterRecords() {
 }
 
 // ============================================
-// MODAL DE IMÁGENES
+// MODAL
 // ============================================
 
 function showImageModal(imageSrc) {
     const modal = document.getElementById('imageModal');
     const modalImg = document.getElementById('modalImage');
-    
     modal.classList.add('show');
     modalImg.src = imageSrc;
 }
 
 function closeModal() {
-    const modal = document.getElementById('imageModal');
-    modal.classList.remove('show');
+    document.getElementById('imageModal').classList.remove('show');
 }
 
+window.showImageModal = showImageModal;
+
 // ============================================
-// EXPORTACIÓN A EXCEL
+// EXPORTAR EXCEL
 // ============================================
 
 function downloadExcel() {
@@ -462,7 +593,6 @@ function downloadExcel() {
         return;
     }
     
-    // Preparar datos para Excel
     const excelData = deliveryRecords.map(record => ({
         'Fecha': record.fecha,
         'Hora': record.hora,
@@ -473,87 +603,27 @@ function downloadExcel() {
         'ID_Recepcion_Base64': record.idRecepcionBase64
     }));
     
-    // Crear libro de Excel
     const wb = XLSX.utils.book_new();
-    
-    // Crear hoja de cálculo
     const ws = XLSX.utils.json_to_sheet(excelData);
     
-    // Ajustar ancho de columnas
     const colWidths = [
-        { wch: 12 },  // Fecha
-        { wch: 10 },  // Hora
-        { wch: 20 },  // Proveedor
-        { wch: 20 },  // Supermercado
-        { wch: 10 },  // Cantidad
-        { wch: 30 },  // ID Entrega
-        { wch: 30 }   // ID Recepción
+        { wch: 12 }, { wch: 10 }, { wch: 20 }, { wch: 20 }, 
+        { wch: 10 }, { wch: 30 }, { wch: 30 }
     ];
     ws['!cols'] = colWidths;
     
-    // Agregar hoja al libro
     XLSX.utils.book_append_sheet(wb, ws, 'Registros');
     
-    // Generar archivo y descargar
     const fileName = `control_canastillas_${getCurrentDate().replace(/\//g, '-')}.xlsx`;
     XLSX.writeFile(wb, fileName);
     
-    // Mostrar confirmación
     showSuccess(`📥 Excel descargado: ${fileName}`);
 }
 
 // ============================================
-// FUNCIONES GLOBALES (para onclick en HTML)
+// CONSOLA
 // ============================================
 
-// Hacer la función disponible globalmente
-window.showImageModal = showImageModal;
-
-// ============================================
-// VERIFICAR SESIÓN AL CARGAR
-// ============================================
-
-// Verificar si hay sesión guardada
-window.addEventListener('load', function() {
-    const savedUser = sessionStorage.getItem('currentUser');
-    if (savedUser) {
-        currentUser = JSON.parse(savedUser);
-        showMainScreen();
-    }
-});
-
-// ============================================
-// PREVENIR PÉRDIDA DE DATOS
-// ============================================
-
-window.addEventListener('beforeunload', function(e) {
-    // Verificar si hay un formulario con datos sin guardar
-    const form = document.getElementById('deliveryForm');
-    const formData = new FormData(form);
-    let hasData = false;
-    
-    for (let value of formData.values()) {
-        if (value) {
-            hasData = true;
-            break;
-        }
-    }
-    
-    if (hasData) {
-        e.preventDefault();
-        e.returnValue = '';
-    }
-});
-
-// ============================================
-// CONSOLA DE DESARROLLO
-// ============================================
-
-console.log('🛒 Sistema de Control de Canastillas - Inicializado');
-console.log('📊 Registros cargados:', deliveryRecords.length);
-console.log('='.repeat(50));
-console.log('Usuarios disponibles:');
-console.log('- Super Usuario: super / admin123');
-console.log('- Administrador: admin / admin123');
-console.log('- Operador: operador / operador123');
+console.log('🛒 Sistema de Control de Canastillas - Cloud Edition');
+console.log('☁️ Integrado con Google Sheets API');
 console.log('='.repeat(50));
